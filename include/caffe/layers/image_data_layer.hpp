@@ -23,7 +23,9 @@ template <typename Dtype>
 class ImageDataLayer : public BasePrefetchingDataLayer<Dtype> {
  public:
   explicit ImageDataLayer(const LayerParameter& param)
-      : BasePrefetchingDataLayer<Dtype>(param) {}
+      : BasePrefetchingDataLayer<Dtype>(param),
+        IGNORE_LABEL_(param.image_data_param().ignore_label()),
+        LABEL_VALUES({USE_LABEL, IGNORE_LABEL_}) {}
   virtual ~ImageDataLayer();
   virtual void DataLayerSetUp(const vector<Blob<Dtype>*>& bottom,
       const vector<Blob<Dtype>*>& top);
@@ -32,13 +34,28 @@ class ImageDataLayer : public BasePrefetchingDataLayer<Dtype> {
   virtual inline int ExactNumBottomBlobs() const { return 0; }
   virtual inline int ExactNumTopBlobs() const { return 2; }
 
+  // For the multi-label case, NUM_LABEL_LISTS of labels are maintained.
+  // (by default, these are separated by ';')
+  static const int NUM_LABEL_LISTS = 2;
+  static const Dtype USE_LABEL = 1;
+
  protected:
   shared_ptr<Caffe::RNG> prefetch_rng_;
   virtual void ShuffleImages();
   virtual void load_batch(Batch<Dtype>* batch);
 
-  vector<std::pair<std::string, int> > lines_;
+  vector<std::pair<std::string, vector<vector<int> > > > lines_;
   int lines_id_;
+
+  int num_labels_per_line_;
+
+  // The label assigned to labels which should be ignored.
+  Dtype IGNORE_LABEL_;
+
+  // For mulit-label problems, each of the labels in a particular list are
+  // assigned a particular value.
+  Dtype LABEL_VALUES[NUM_LABEL_LISTS];
+
 };
 
 
