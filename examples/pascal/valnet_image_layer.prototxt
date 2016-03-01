@@ -4,11 +4,11 @@ layer {
   top: "data"
   top: "label"
   image_data_param {
-    source: "./pascal/val.list.txt"
+    source: "./examples/pascal/val.list.txt"
     new_height: 227
     new_width: 227
     batch_size: 128
-    root_folder:"../data/pascal/VOC2012/"
+    root_folder:"./data/pascal/VOC2012/"
   }
 }
 layer {

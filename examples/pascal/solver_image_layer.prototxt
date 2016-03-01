@@ -7,10 +7,10 @@ lr_policy: "fixed"
 max_iter: 100000
 momentum: 0.9
 snapshot: 2500
-snapshot_prefix: "./pascal/image_layer_snapshot"
+snapshot_prefix: "./examples/pascal/image_layer_snapshot"
 test_initialization: false
 test_interval: 250
 test_iter: 100
-test_net: "./pascal/valnet_image_layer.prototxt"
-train_net: "./pascal/trainnet_image_layer.prototxt"
+test_net: "./examples/pascal/valnet_image_layer.prototxt"
+train_net: "./examples/pascal/trainnet_image_layer.prototxt"
 weight_decay: 0.0005
