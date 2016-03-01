@@ -1,9 +1,21 @@
-# Create a file list for the pascal multi-label classification
+# Create a file list for the pascal multi-label classification.
+# This should be run from the $CAFFE_ROOT folder as:
+# python ./examples/pascal/create_file_list.py
+#
+# This creates three files (each in the $CAFFE_ROOT/examples/pascal folder):
+#   trainval.list.txt, train.list.txt, and val.list.txt
+#
+# Note that the folder $CAFFE_ROOT/data/pascal/VOC2012 must contain the
+# relevant data. The dataset can be downloaded by running:
+#   ./data/pascal/get_pascal.sh
+# in the $CAFFE_ROOT folder.
+#
+
 import datetime
 import os
 import numpy as np
 import sets
-from xml.dom import minidom
+import xml.dom.minidom
 
 
 def get_pascal_classes(index, pascal_root, ignore_list):
@@ -30,7 +42,7 @@ def get_pascal_classes(index, pascal_root, ignore_list):
         return node.getElementsByTagName(tag)[0].childNodes[0].data
 
     with open(filename) as f:
-        data = minidom.parseString(f.read())
+        data = xml.dom.minidom.parseString(f.read())
 
     objs = data.getElementsByTagName('object')
 
@@ -96,11 +108,14 @@ def main():
     output_path = 'examples/pascal'
     label_separator = ' '
     ignore_separator = ';'
-    ignore_list = []
+    # Ignore the background label.
+    ignore_list = [0]
 
     for phase in ['train', 'trainval', 'val']:
         print("Creating list for %s" % phase)
-        train_list = create_list_file(pascal_root, output_path, phase)
+        train_list = create_list_file(
+            pascal_root, output_path, phase, label_separator, ignore_list,
+            ignore_separator)
 
 if __name__ == "__main__":
     main()
