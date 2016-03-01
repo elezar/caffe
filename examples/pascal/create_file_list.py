@@ -108,8 +108,7 @@ def main():
     output_path = 'examples/pascal'
     label_separator = ' '
     ignore_separator = ';'
-    # Ignore the background label.
-    ignore_list = [0]
+    ignore_list = []
 
     for phase in ['train', 'trainval', 'val']:
         print("Creating list for %s" % phase)
