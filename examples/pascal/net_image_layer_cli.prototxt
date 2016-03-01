@@ -3,8 +3,27 @@ layer {
   type: "ImageData"
   top: "data"
   top: "label"
+  include: {
+    phase: TRAIN
+  }
   image_data_param {
     source: "./examples/pascal/train.list.txt"
+    new_height: 227
+    new_width: 227
+    batch_size: 128
+    root_folder: "./data/pascal/VOC2012/"
+  }
+}
+layer {
+  name: "data"
+  type: "ImageData"
+  top: "data"
+  top: "label"
+  include: {
+    phase: TEST
+  }
+  image_data_param {
+    source: "./examples/pascal/val.list.txt"
     new_height: 227
     new_width: 227
     batch_size: 128
@@ -218,4 +237,7 @@ layer {
   bottom: "score"
   bottom: "label"
   top: "loss"
+  loss_param: {
+    ignore_label: -1
+  }
 }

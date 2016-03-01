@@ -7,9 +7,9 @@ lr_policy: "fixed"
 max_iter: 100000
 momentum: 0.9
 snapshot: 2500
-snapshot_prefix: "./examples/pascal/image_layer_snapshot"
+snapshot_prefix: "./pascal/image_layer_notebook_snapshot"
 test_initialization: false
 test_interval: 250
 test_iter: 100
-net: "./examples/pascal/net_image_layer_cli.prototxt"
+net: "./pascal/net_image_layer_notebook.prototxt"
 weight_decay: 0.0005

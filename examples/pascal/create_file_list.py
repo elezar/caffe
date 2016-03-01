@@ -11,9 +11,9 @@
 # in the $CAFFE_ROOT folder.
 #
 
+import argparse
 import datetime
 import os
-import numpy as np
 import sets
 import xml.dom.minidom
 
@@ -73,7 +73,7 @@ def create_label_list(labels, separator):
     return separator.join(str(l) for l in labels)
 
 
-def create_list_file(root, output_path, phase,
+def create_list_file(root, output_path, phase, suffix,
                      label_separator, ignore_list, ignore_separator):
     """
     Create a list file for the specified phase
@@ -83,7 +83,7 @@ def create_list_file(root, output_path, phase,
     image_root = os.path.join('JPEGImages')
     image_ext = '.jpg'
 
-    filename = os.path.join(output_path, '%s.list.txt' % phase)
+    filename = os.path.join(output_path, '%s.%s' % (phase, suffix))
 
     if ignore_list and ignore_separator:
         ignore_string = '%s%s' % (
@@ -103,18 +103,46 @@ def create_list_file(root, output_path, phase,
             f.write(line)
 
 
+pascal_root = 'data/pascal/VOC2012'
+output_path = 'examples/pascal'
+
+
+def get_args():
+    parser = argparse.ArgumentParser(
+        description='Create Pascal VOC2012 file lists')
+    parser.add_argument(
+        '--pascal-root', default=pascal_root,
+        help='The folder where the PASCAL VOC2012 is stored')
+    parser.add_argument(
+        '--output-path', default=output_path,
+        help='The folder where the file lists should be stored')
+    parser.add_argument(
+        '--suffix', default='list.txt',
+        help='The suffix to append to the phase (train, val, trainval) to \
+             generate the output filename')
+    parser.add_argument(
+        '--label-separator', default=' ')
+    parser.add_argument(
+        '--list-separator', default=';')
+    parser.add_argument(
+        '--ignore-background', action='store_true')
+
+    return parser.parse_args()
+
+
 def main():
-    pascal_root = 'data/pascal/VOC2012'
-    output_path = 'examples/pascal'
-    label_separator = ' '
-    ignore_separator = ';'
-    ignore_list = []
+
+    args = get_args()
+    if args.ignore_background:
+        ignore_list = [0]
+    else:
+        ignore_list = []
 
     for phase in ['train', 'trainval', 'val']:
         print("Creating list for %s" % phase)
         train_list = create_list_file(
-            pascal_root, output_path, phase, label_separator, ignore_list,
-            ignore_separator)
+            args.pascal_root, args.output_path, phase, args.suffix,
+            args.label_separator, ignore_list, args.list_separator)
 
 if __name__ == "__main__":
     main()
