@@ -63,7 +63,7 @@ void ShopTheLookDataLayer<Dtype>::DataLayerSetUp(const vector<Blob<Dtype>*>& bot
         // the other entries are the file names
         // If there is no more delimiter, append last string and finish this line
         if (end == string::npos) {
-          sku_collection_images_[sku_to_index_[sku_string]].push_back(line);
+          sku_collection_images_[sku_to_index_[sku_string]].push_back(line.substr(0, line.size() - 1)); // we need to take the substring because the newline character is somehow there
           has_next = false;
         } else {
           sku_collection_images_[sku_to_index_[sku_string]].push_back(line.substr(0, end));
@@ -115,7 +115,6 @@ void ShopTheLookDataLayer<Dtype>::DataLayerSetUp(const vector<Blob<Dtype>*>& bot
         
         int stl_index = shop_the_look_images_.size()-1;
         int sku_index = sku_to_index_[sku_str];
-        //std::cout << "adding positive example " << "
         positive_examples_.push_back(std::pair<int, int>(stl_index, sku_index));
         if (positive_examples_map_.find(stl_index) == positive_examples_map_.end()) {
           positive_examples_map_[stl_index] = std::set<int>();
@@ -202,15 +201,14 @@ void ShopTheLookDataLayer<Dtype>::ShuffleImages() {
  * Load an image and save it to transformed data
  */
 template <typename Dtype>
-void fetch_image(const ImageDataParameter& image_data_param, const string& file_name, shared_ptr<DataTransformer<Dtype> >& data_transformer, Blob<Dtype>& transformed_data) {
+void fetch_image(const ImageDataParameter& image_data_param, string file_name, shared_ptr<DataTransformer<Dtype> >& data_transformer, Blob<Dtype>& transformed_data) {
   const int new_height = image_data_param.new_height();
   const int new_width = image_data_param.new_width();
   const bool is_color = image_data_param.is_color();
-  string root_folder = image_data_param.root_folder();
-
+  const string& root_folder = image_data_param.root_folder();
   cv::Mat cv_img = ReadImageToCVMat(root_folder + file_name,
       new_height, new_width, is_color);
-  CHECK(cv_img.data) << "Could not load " << file_name;
+  CHECK(cv_img.data) << "Could not load " << root_folder + file_name;
   // Apply transformations (mirror, crop...) to the image
   data_transformer->Transform(cv_img, &transformed_data);
 }
@@ -237,21 +235,22 @@ void ShopTheLookDataLayer<Dtype>::load_batch(Batch<Dtype>* batch) {
   int sku_data_size = 1;
   for (int i = 1; i < sku_shape_.size(); ++i)
     sku_data_size *= sku_shape_[i];
-  vector<int> data_shape(1, batch_size * stl_data_size);
-  batch->data_.Reshape(data_shape);
-  Dtype* data = batch->data_.mutable_cpu_data();
   
   Blob<Dtype> transformed_data;
     
   vector<float> uniform_random(batch_size);
   caffe_rng_uniform(batch_size, float(0), float(1), uniform_random.data());
-  int shop_the_look_index(0), sku_index(0), num_sku_images(0);
+  int num_sku_images(0);
+  vector<int> shop_the_look_index(batch_size), sku_index(batch_size);
+  
+  
+  // start off by determining which images will be loaded so that everything can be resized
   for (int item_id = 0; item_id < batch_size; ++item_id) {
     // either fetch a positive or a negative example
     if (uniform_random[item_id] < stl_param.positive_probability()) {
       // positive example case
-      shop_the_look_index = positive_examples_[lines_id_].first;
-      sku_index = positive_examples_[lines_id_++].second;
+      shop_the_look_index[item_id] = positive_examples_[lines_id_].first;
+      sku_index[item_id] = positive_examples_[lines_id_++].second;
       batch->label_.mutable_cpu_data()[item_id] = 1;
       if (lines_id_ >= positive_examples_.size()) {
         // We have reached the end. Restart from the first.
@@ -264,32 +263,36 @@ void ShopTheLookDataLayer<Dtype>::load_batch(Batch<Dtype>* batch) {
     } else {
       // negative example case
       while(true) {
-        shop_the_look_index = caffe_rng_rand() % num_shop_the_look_;
-        sku_index           = caffe_rng_rand() % num_sku_;
+        shop_the_look_index[item_id] = caffe_rng_rand() % num_shop_the_look_;
+        sku_index[item_id]           = caffe_rng_rand() % num_sku_;
         // check to see if this is a positive example
-        if (positive_examples_map_.find(shop_the_look_index) == positive_examples_map_.end() || 
-            positive_examples_map_[shop_the_look_index].find(sku_index) == positive_examples_map_[shop_the_look_index].end()) {
+        if (positive_examples_map_.find(shop_the_look_index[item_id]) == positive_examples_map_.end() || 
+            positive_examples_map_[shop_the_look_index[item_id]].find(sku_index[item_id]) == positive_examples_map_[shop_the_look_index[item_id]].end()) {
             // ok, it is not a positive example
             break;
         }
       }
       batch->label_.mutable_cpu_data()[item_id] = 0;
     }
+    num_sku_images += sku_collection_images_[sku_index[item_id]].size();
+  }
+  // reshape the output data so it's large enough for the next collection images
+  vector<int> data_shape(1, batch_size * stl_data_size + num_sku_images * sku_data_size);
+  batch->data_.Reshape(data_shape);
+  Dtype* data = batch->data_.mutable_cpu_data();
+  
+  num_sku_images = 0;
+  for (int item_id = 0; item_id < batch_size; ++item_id) {
     // fetch the shop the look image
     vector<int> shop_the_look_shape(shop_the_look_shape_);
     shop_the_look_shape[0] = 1;
     transformed_data.Reshape(shop_the_look_shape);
     transformed_data.set_cpu_data(data + item_id * stl_data_size);
-    fetch_image(stl_param.shop_the_look_image_data_param(), shop_the_look_images_[shop_the_look_index], this->data_transformer_, transformed_data);
+    fetch_image(stl_param.shop_the_look_image_data_param(), shop_the_look_images_[shop_the_look_index[item_id]], this->data_transformer_, transformed_data);
     
     // fetch the collection images
-    const vector<string>& collection = sku_collection_images_[sku_index];
+    const vector<string>& collection = sku_collection_images_[sku_index[item_id]];
     
-    // reshape the output data so it's large enough for the next collection images
-    data_shape[0] += sku_data_size * collection.size();
-    std::cout << "reshapeing like " << data_shape[0] << std::endl;
-    batch->data_.Reshape(data_shape);
-    data = batch->data_.mutable_cpu_data();
     
     vector<int> sku_shape(sku_shape_);
     sku_shape[0] = 1;
