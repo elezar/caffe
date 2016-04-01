@@ -128,6 +128,30 @@ vector<shared_ptr<Blob<Dtype> > > get_combi(int blob_length) {
   return answer;
 }
 
+// generate multinomial samples where the probability of the i-th sample being
+// equal to j is eqaul to probability[j], where we assume the vector probability
+// has unit sum
+template <typename Dtype>
+vector<int> multinomial(int num_samples, const vector<Dtype>& probability) {
+  vector<Dtype> samples(num_samples);
+
+  caffe_rng_uniform(num_samples, Dtype(0), Dtype(1), samples.data());
+  std::sort(samples.begin(), samples.end());
+  vector<int> multinomial(num_samples);
+  int current_index = 0;
+  Dtype cum_sum = probability[0];
+  for (int i = 0; i < num_samples; ++i) {
+    if (samples[i] < cum_sum || current_index == probability.size()-1) {
+      multinomial[i] = current_index;
+    } else {
+      cum_sum += probability[++current_index];
+      i--;
+    }
+  }
+  shuffle(multinomial.begin(), multinomial.end());
+  return multinomial;
+}
+
 template <typename TypeParam>
 class RBMInnerProductLayerTest : public MultiDeviceTest<TypeParam> {
   typedef typename TypeParam::Dtype Dtype;
@@ -589,6 +613,92 @@ TYPED_TEST(RBMInnerProductLayerTest, TestSample) {
   // check if overlap between actual and sampled probability measures is high
   Dtype overlap = calculate_overlap(all_visable, all_hidden, probability, *this->target_layer_);
   EXPECT_GE(overlap, .9);
+}
+
+// If the weight starts off in the right spot, is the update zero on average
+TYPED_TEST(RBMInnerProductLayerTest, TestZeroUpdate) {
+  typedef typename TypeParam::Dtype Dtype;
+  Caffe::set_random_seed(1702);
+  const int num_input(4), num_output(3), batch_size(10);
+  const int num_samples(500);
+  
+  string extra_text =
+      "  visible_activation_layer_param { "
+      "    name: 'hidden_activation' "
+      "    type: 'Sigmoid' "
+      "  } "
+      "  visible_sampling_layer_param { "
+      "    name: 'hidden_sample' "
+      "    type: 'BernoulliSample' "
+      "  } "
+      "  visible_bias_term: true ";
+  string proto = this->getLayerText(extra_text, true, num_output);
+  this->InitLayerFromProtoString(proto);
+
+  // now calculate the probability of each possible visable vector
+  vector<shared_ptr<Blob<Dtype> > > all_visable = get_combi<Dtype>(num_input);
+  vector<shared_ptr<Blob<Dtype> > > all_hidden  = get_combi<Dtype>(num_output);
+  
+  vector<int> bottom_shape(all_visable[0]->shape());
+  bottom_shape[0] = batch_size;
+  this->blob_bottom_input_->Reshape(bottom_shape);
+  this->blob_top_vec_.clear();
+  this->blob_top_vec_.push_back(this->pre_activation_h1_);
+  this->blob_top_vec_.push_back(this->post_activation_h1_);
+  this->blob_top_vec_.push_back(this->sample_h1_);
+  vector<int> top_shape(all_hidden[0]->shape());
+  top_shape[0] = batch_size;
+  for (int i = 0; i < 3; ++i) {
+    this->blob_top_vec_[i]->Reshape(top_shape);
+  }
+  this->layer_->SetUp(this->blob_bottom_vec_, this->blob_top_vec_);
+  vector<Dtype> probability = sample_frequency(all_visable, all_hidden,
+                                               *this->layer_);
+  
+  // set the weight diffs to zero
+  for (int j = 0; j < this->layer_->blobs().size(); ++j) {
+    shared_ptr<Blob<Dtype> > blob = this->layer_->blobs()[j];
+    caffe_set(blob->count(), Dtype(0.), blob->mutable_cpu_diff());
+  }
+
+  vector<int> multi = multinomial(num_samples, probability);
+
+  // Do a bunch of updates, adding the update to the diff
+  switch (Caffe::mode()) {
+  case Caffe::CPU:
+    for (int i = 0; i < num_samples / batch_size; ++i) {
+      for (int j = 0; j < batch_size; ++j) {
+        caffe_copy(num_input, all_visable[multi[i*batch_size + j]]->cpu_data(),
+                   this->blob_bottom_input_->mutable_cpu_data() + j*num_input);
+      }
+      this->layer_->Forward(this->blob_bottom_vec_, this->blob_top_vec_);
+    }
+    break;
+  case Caffe::GPU:
+#ifndef CPU_ONLY
+    for (int i = 0; i < num_samples / batch_size; ++i) {
+      for (int j = 0; j < batch_size; ++j) {
+        caffe_copy(num_input, all_visable[multi[i*batch_size + j]]->gpu_data(),
+                   this->blob_bottom_input_->mutable_gpu_data() + j*num_input);
+      }
+      this->layer_->Forward(this->blob_bottom_vec_, this->blob_top_vec_);
+    }
+#else
+    NO_GPU;
+#endif
+    break;
+  default:
+    LOG(FATAL) << "Unknown caffe mode: " << Caffe::mode();
+  }
+
+  // make sure that the average diffs are not too large
+  for (int j = 0; j < this->layer_->blobs().size(); ++j) {
+    shared_ptr<Blob<Dtype> > blob = this->layer_->blobs()[j];
+    for (int i = 0; i < blob->count(); ++i) {
+      EXPECT_GE(blob->cpu_diff()[i] / num_samples, -0.05);
+      EXPECT_LE(blob->cpu_diff()[i] / num_samples,  0.05);
+    }
+  }
 }
 
 }  // namespace caffe
