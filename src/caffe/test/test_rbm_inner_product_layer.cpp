@@ -651,13 +651,13 @@ TYPED_TEST(RBMInnerProductLayerTest, TestZeroUpdate) {
   for (int i = 0; i < 3; ++i) {
     this->blob_top_vec_[i]->Reshape(top_shape);
   }
-  this->layer_->SetUp(this->blob_bottom_vec_, this->blob_top_vec_);
+  this->target_layer_->SetUp(this->blob_bottom_vec_, this->blob_top_vec_);
   vector<Dtype> probability = sample_frequency(all_visable, all_hidden,
-                                               *this->layer_);
+                                               *this->target_layer_);
   
   // set the weight diffs to zero
-  for (int j = 0; j < this->layer_->blobs().size(); ++j) {
-    shared_ptr<Blob<Dtype> > blob = this->layer_->blobs()[j];
+  for (int j = 0; j < this->target_layer_->blobs().size(); ++j) {
+    shared_ptr<Blob<Dtype> > blob = this->target_layer_->blobs()[j];
     caffe_set(blob->count(), Dtype(0.), blob->mutable_cpu_diff());
   }
 
@@ -671,7 +671,7 @@ TYPED_TEST(RBMInnerProductLayerTest, TestZeroUpdate) {
         caffe_copy(num_input, all_visable[multi[i*batch_size + j]]->cpu_data(),
                    this->blob_bottom_input_->mutable_cpu_data() + j*num_input);
       }
-      this->layer_->Forward(this->blob_bottom_vec_, this->blob_top_vec_);
+      this->target_layer_->Forward(this->blob_bottom_vec_, this->blob_top_vec_);
     }
     break;
   case Caffe::GPU:
@@ -681,7 +681,7 @@ TYPED_TEST(RBMInnerProductLayerTest, TestZeroUpdate) {
         caffe_copy(num_input, all_visable[multi[i*batch_size + j]]->gpu_data(),
                    this->blob_bottom_input_->mutable_gpu_data() + j*num_input);
       }
-      this->layer_->Forward(this->blob_bottom_vec_, this->blob_top_vec_);
+      this->target_layer_->Forward(this->blob_bottom_vec_, this->blob_top_vec_);
     }
 #else
     NO_GPU;
