@@ -37,6 +37,8 @@ class RBMInnerProductLayer : public Layer<Dtype> {
                        const vector<Blob<Dtype>*>& top);
   virtual inline const char* type() const { return "RBMInnerProduct"; }
   virtual inline int ExactNumBottomBlobs() const { return 1; }
+  virtual inline bool forward_is_update() const { return forward_is_update_;}
+  virtual inline void forward_is_update(bool f) { forward_is_update_ = f;}
 
  protected:
   /**
@@ -49,7 +51,9 @@ class RBMInnerProductLayer : public Layer<Dtype> {
   virtual void Backward_cpu(const vector<Blob<Dtype>*>& top,
                             const vector<bool>& propagate_down,
                             const vector<Blob<Dtype>*>& bottom);
-
+  virtual void update_diffs(const int k,
+                            const vector<Blob<Dtype>*>& hidden_k,
+                            const vector<Blob<Dtype>*>& visible_k);
   /// number of top blobs used for error reporting
   int num_error_;
   /// Forward pass is an update and not just a simple forward through connection
@@ -101,6 +105,9 @@ class RBMInnerProductLayer : public Layer<Dtype> {
   shared_ptr<Blob<Dtype> > sample_h1_blob_;
   vector<Blob<Dtype>*> sample_h1_vec_;
   vector<Blob<Dtype>*> sample_v1_vec_;
+  
+  /// copy bottom data to this so sampling doesn't change actual bottom data
+  shared_ptr<Blob<Dtype> > bottom_copy_;
 };
 
 }  // namespace caffe
