@@ -30,37 +30,28 @@ extern cudaDeviceProp CAFFE_TEST_CUDA_PROP;
 
 // calculate the energy of a given hidden / visible pair for a layer's values
 template <typename Dtype>
-Dtype calculate_energy(const shared_ptr<Blob<Dtype> >& visible_vector,
+Dtype calculate_energy(const shared_ptr<Blob<Dtype> >& visable_vector,
                        const shared_ptr<Blob<Dtype> >& hidden_vector,
                        RBMInnerProductLayer<Dtype>& layer) {
-  // Set up the input and output data vectors
-  Blob<Dtype> pre_activation;
-  Blob<Dtype> post_activation;
-  Blob<Dtype> sample;
-  vector<Blob<Dtype>* > output_vector;
-  output_vector.push_back(&pre_activation);
-  output_vector.push_back(&post_activation);
-  output_vector.push_back(&sample);
   
-  vector<Blob<Dtype>* > input_vector;
-  input_vector.push_back(visible_vector.get());
-  
-  // dow a forward pass
-  layer.Forward(input_vector, output_vector);
-  
-  // multiply matrix product result with hidden vecto
-  Dtype matrix_sum = caffe_cpu_dot(hidden_vector->count(),
-                      output_vector[0]->cpu_data(), hidden_vector->cpu_data());
-  
-  // for each filter / output we get one hidden matrix, here we add the filter-specific bias to that and sum
-  for (int i = 0; i < hidden_vector->shape()[1]; ++i) {
-    matrix_sum += layer.blobs()[1]->cpu_data()[i] * std::accumulate(hidden_vector->cpu_data() + hidden_vector->count(2) * i, hidden_vector->cpu_data() + hidden_vector->count(2) * (i+1), Dtype(0.));
-  }
+  const shared_ptr<Blob<Dtype> > weight_matrix  = layer.blobs()[0];
+  const shared_ptr<Blob<Dtype> > hidden_bias  = layer.blobs()[1];
+  const shared_ptr<Blob<Dtype> > visable_bias = layer.blobs()[2];
+  Dtype matrix_sum = caffe_cpu_dot(visable_bias->count(),
+                       visable_bias->cpu_data(), visable_vector->cpu_data());
 
-  // Visable bias multiplied with visible input
-  matrix_sum += caffe_cpu_dot(visible_vector->count(),
-                       visible_vector->cpu_data(), layer.blobs()[2]->cpu_data());
-  
+  matrix_sum += caffe_cpu_dot(hidden_bias->count(),
+                       hidden_bias->cpu_data(), hidden_vector->cpu_data());
+
+  Blob<Dtype> tmp_blob(vector<int>(1, hidden_vector->count()));
+
+  caffe_cpu_gemv(CblasNoTrans, hidden_vector->count(), visable_vector->count(),
+      (Dtype)1., weight_matrix->cpu_data(), visable_vector->cpu_data(),
+      (Dtype)0., tmp_blob.mutable_cpu_data());
+
+  matrix_sum += caffe_cpu_dot(hidden_vector->count(),
+                       hidden_vector->cpu_data(), tmp_blob.cpu_data());
+
   // no negative due to double negation
   return exp(matrix_sum);
 }
@@ -204,6 +195,7 @@ class RBMInnerProductLayerTest : public MultiDeviceTest<TypeParam> {
 
   virtual string getLayerText(const string& extra_text = "",
                               bool forward_is_update = true,
+                              bool visable_bias_term = true,
                               int num_output = 10,
                               int sample_steps_in_update = 2) {
     string proto =
@@ -218,6 +210,16 @@ class RBMInnerProductLayerTest : public MultiDeviceTest<TypeParam> {
     proto += boost::lexical_cast<string>(num_output);
     proto +=
       "      bias_term: true "
+      "      weight_filler: { "
+      "        type: 'gaussian' "
+      "        mean: 0.0 "
+      "        std:  0.1 "
+      "      } "
+      "      bias_filler: { "
+      "        type: 'gaussian' "
+      "        mean: 0.0 "
+      "        std:  0.1 "
+      "      } "
       "    } "
       "  } "
       "  hidden_activation_layer_param { "
@@ -234,6 +236,17 @@ class RBMInnerProductLayerTest : public MultiDeviceTest<TypeParam> {
       proto += "  forward_is_update: true ";
     } else {
       proto += "  forward_is_update: false ";
+    }
+    if (visable_bias_term) {
+      proto +=
+        "  visible_bias_term: true "
+        "  visible_bias_filler { "
+        "    type: 'gaussian' "
+        "    mean: 0.0 "
+        "    std:  0.1 "
+        "  } ";
+    } else {
+      proto += "  visible_bias_term: false ";
     }
     proto += extra_text;
     proto += "} ";
@@ -478,9 +491,8 @@ TYPED_TEST(RBMInnerProductLayerTest, TestBackward) {
       "    name: 'hidden_sample' "
       "    type: 'BernoulliSample' "
       "  } "
-      "  loss_measure: FREE_ENERGY "
-      "  visible_bias_term: false ";
-  string proto = this->getLayerText(extra_text, false);
+      "  loss_measure: FREE_ENERGY ";
+  string proto = this->getLayerText(extra_text, false, false);
 
   // run forward with no non error output
   this->InitLayerFromProtoString(proto);
@@ -559,9 +571,8 @@ TYPED_TEST(RBMInnerProductLayerTest, TestSample) {
       "  visible_sampling_layer_param { "
       "    name: 'hidden_sample' "
       "    type: 'BernoulliSample' "
-      "  } "
-      "  visible_bias_term: true ";
-  string proto = this->getLayerText(extra_text, false, num_output);
+      "  } ";
+  string proto = this->getLayerText(extra_text, false, true, num_output);
   this->InitLayerFromProtoString(proto);
   
   vector<int> input_shape(4, 1);
@@ -630,9 +641,8 @@ TYPED_TEST(RBMInnerProductLayerTest, TestZeroUpdate) {
       "  visible_sampling_layer_param { "
       "    name: 'hidden_sample' "
       "    type: 'BernoulliSample' "
-      "  } "
-      "  visible_bias_term: true ";
-  string proto = this->getLayerText(extra_text, true, num_output);
+      "  } ";
+  string proto = this->getLayerText(extra_text, true, true, num_output);
   this->InitLayerFromProtoString(proto);
 
   // now calculate the probability of each possible visable vector
@@ -699,6 +709,134 @@ TYPED_TEST(RBMInnerProductLayerTest, TestZeroUpdate) {
       EXPECT_LE(blob->cpu_diff()[i] / num_samples,  0.05);
     }
   }
+}
+
+
+// Test if a randomly initialized RBM converges to some local minimum
+TYPED_TEST(RBMInnerProductLayerTest, TestLocalMinimum) {
+typedef typename TypeParam::Dtype Dtype;
+  Caffe::set_random_seed(1701);
+  const int num_input(4), num_output(3), batch_size(10);
+  const int num_samples(10000);
+  const Dtype learning_rate = .00005 * batch_size;
+  
+  string extra_text =
+      "  visible_activation_layer_param { "
+      "    name: 'hidden_activation' "
+      "    type: 'Sigmoid' "
+      "  } "
+      "  visible_sampling_layer_param { "
+      "    name: 'hidden_sample' "
+      "    type: 'BernoulliSample' "
+      "  } ";
+  string proto = this->getLayerText(extra_text, true, true, num_output);
+  this->InitLayerFromProtoString(proto);
+
+  // now calculate the probability of each possible visable vector
+  vector<shared_ptr<Blob<Dtype> > > all_visable = get_combi<Dtype>(num_input);
+  vector<shared_ptr<Blob<Dtype> > > all_hidden  = get_combi<Dtype>(num_output);
+  
+  vector<int> bottom_shape(all_visable[0]->shape());
+  bottom_shape[0] = batch_size;
+  this->blob_bottom_input_->Reshape(bottom_shape);
+  this->blob_top_vec_.clear();
+  this->blob_top_vec_.push_back(this->pre_activation_h1_);
+  this->blob_top_vec_.push_back(this->post_activation_h1_);
+  this->blob_top_vec_.push_back(this->sample_h1_);
+  vector<int> top_shape(all_hidden[0]->shape());
+  top_shape[0] = batch_size;
+  for (int i = 0; i < 3; ++i) {
+    this->blob_top_vec_[i]->Reshape(top_shape);
+  }
+  this->target_layer_->SetUp(this->blob_bottom_vec_, this->blob_top_vec_);
+  this->layer_->SetUp(this->blob_bottom_vec_, this->blob_top_vec_);
+
+  
+  vector<Dtype> probability = sample_frequency(all_visable, all_hidden, *this->target_layer_);
+  
+  // set the weight diffs to zero
+  for (int j = 0; j < this->target_layer_->blobs().size(); ++j) {
+    shared_ptr<Blob<Dtype> > blob = this->target_layer_->blobs()[j];
+    caffe_set(blob->count(), Dtype(0.), blob->mutable_cpu_diff());
+  }
+
+  vector<int> multi = multinomial(num_samples, probability);
+
+  switch (Caffe::mode()) {
+  case Caffe::CPU:
+    for (int i = 0; i < num_samples / batch_size; ++i) {
+      for (int j = 0; j < batch_size; ++j) {
+        caffe_copy(num_input, all_visable[multi[i*batch_size + j]]->cpu_data(),
+                   this->blob_bottom_input_->mutable_cpu_data() + j*num_input);
+      }
+      for (int j = 0; j < this->layer_->blobs().size(); j++) {
+        caffe_set(this->layer_->blobs()[j]->count(), Dtype(0.),
+                  this->layer_->blobs()[j]->mutable_cpu_diff());
+      }
+      this->layer_->Forward(this->blob_bottom_vec_, this->blob_top_vec_);
+      for (int j = 0; j < this->layer_->blobs().size(); ++j) {
+        shared_ptr<Blob<Dtype> > blobs = this->layer_->blobs()[j];
+        caffe_axpy(blobs->count(), Dtype(learning_rate),
+                   blobs->cpu_diff(), blobs->mutable_cpu_data());
+      }
+    }
+    break;
+  case Caffe::GPU:
+#ifndef CPU_ONLY
+    for (int i = 0; i < num_samples / batch_size; ++i) {
+      for (int j = 0; j < batch_size; ++j) {
+        caffe_copy(num_input, all_visable[multi[i*batch_size + j]]->gpu_data(),
+                   this->blob_bottom_input_->mutable_gpu_data() + j*num_input);
+      }
+      for (int j = 0; j < 3; j++) {
+        caffe_gpu_set(this->layer_->blobs()[j]->count(),
+                      Dtype(0.), this->layer_->blobs()[j]->mutable_gpu_diff());
+      }
+      this->layer_->Forward(this->blob_bottom_vec_, this->blob_top_vec_);
+      for (int j = 0; j < 3; ++j) {
+        shared_ptr<Blob<Dtype> > blobs = this->layer_->blobs()[j];
+        caffe_gpu_axpy(blobs->count(), Dtype(learning_rate),
+                       blobs->gpu_diff(), blobs->mutable_gpu_data());
+      }
+    }
+#else
+    NO_GPU;
+#endif
+    break;
+  default:
+    LOG(FATAL) << "Unknown caffe mode: " << Caffe::mode();
+  }
+  
+  // calculate the numerical gradient of the TV where the RBM stopped
+  vector<Dtype> ground_probability = sample_frequency(all_visable, all_hidden,
+                                                      *this->layer_);
+
+  for(int i = 0; i < ground_probability.size(); ++i)
+    ASSERT_FALSE(isnan(ground_probability[i]));
+  // see if learning is in a local minimum, calculate overlap at learned point
+  Dtype learned_overlap = 0;
+  for (int j = 0; j < probability.size(); ++j) {
+    learned_overlap += std::min(probability[j], ground_probability[j]);
+  }
+  // For every possible direction, perturb the weight and ensure the new
+  // solution is worse than that which was estimated
+  const Dtype epsi = 0.25;
+  Dtype possible_improvement = 0;
+  for (int k = 0; k < this->layer_->blobs().size(); ++k) {
+    Blob<Dtype>& blob_to_test = *this->layer_->blobs()[k];
+    for (int i = 0; i < blob_to_test.count(); ++i) {
+      blob_to_test.mutable_cpu_data()[i] += epsi;
+      vector<Dtype> new_probability = sample_frequency(all_visable, all_hidden,
+                                                        *this->layer_);
+      Dtype new_overlap = 0;
+      for (int j = 0; j < probability.size(); ++j) {
+        new_overlap += std::min(probability[j], new_probability[j]);
+      }
+      possible_improvement -= std::min(Dtype(0), learned_overlap - new_overlap);
+      blob_to_test.mutable_cpu_data()[i] -= epsi;
+    }
+  }
+  EXPECT_LT(possible_improvement, .0005);
 }
 
 }  // namespace caffe
