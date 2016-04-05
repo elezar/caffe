@@ -10,6 +10,6 @@ max_iter: 3000000
 momentum: 0.0
 weight_decay: 0.000
 snapshot: 6000
-snapshot_prefix: "examples/mnist/mnist_rbm"
+snapshot_prefix: "examples/mnist/rbm/mnist_rbm"
 # solver mode: CPU or GPU
 solver_mode: CPU

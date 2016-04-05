@@ -113,6 +113,8 @@ def plot(filename, layer_id, output_file=None, cmap=None):
     with open(filename) as f:
         net = pb.NetParameter.FromString(f.read())
 
+    print net.layers
+
     shape = net.layer[layer_id].blobs[0].shape.dim
     W = np.array(net.layer[layer_id].blobs[0].data).reshape(shape)
 

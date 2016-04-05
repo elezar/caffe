@@ -51,7 +51,7 @@ layer {
     connection_layer_param {
       type: "InnerProduct"
       inner_product_param {
-        num_output: 10
+        num_output: 784
       }
     }
     hidden_activation_layer_param {
