@@ -1,0 +1,58 @@
+name: "CaffeNet"
+layer {
+  name: "mnist"
+  type: "Data"
+  top: "data"
+  top: "label"
+  include {
+    phase: TRAIN
+  }
+  transform_param {
+    scale: 0.00390625
+  }
+  data_param {
+    source: "examples/mnist/mnist_train_lmdb"
+    batch_size: 1
+    backend: LMDB
+  }
+}
+layer {
+  name: "mnist"
+  type: "Data"
+  top: "data"
+  top: "label"
+  include {
+    phase: TEST
+  }
+  transform_param {
+    scale: 0.00390625
+  }
+  data_param {
+    source: "examples/mnist/mnist_test_lmdb"
+    batch_size: 1
+    backend: LMDB
+  }
+}
+layer {
+  name: "flatten_layer"
+  type: "Flatten"
+  top: "flat_data"
+  bottom: "data"
+  flatten_param {
+    axis: 1
+  }
+}
+layer {
+  name: "fc_rbm_1_layer"
+  type: "RBMInnerProduct"
+  bottom: "flat_data"
+  top: "fc_rbm_1"
+  rbm_inner_product_param {
+    connection_layer_param {
+      type: "InnerProduct"
+      inner_product_param {
+      num_output: 10
+      }
+    }
+  }
+}

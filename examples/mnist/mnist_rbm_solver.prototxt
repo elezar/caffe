@@ -1,0 +1,15 @@
+net: "examples/mnist/mnist_rbm.prototxt"
+test_iter: 10000
+test_interval: 60000
+base_lr: 0.05
+lr_policy: "step"
+gamma: 0.1
+stepsize: 10000000
+display:  1000
+max_iter: 3000000
+momentum: 0.0
+weight_decay: 0.000
+snapshot: 6000
+snapshot_prefix: "examples/mnist/mnist_rbm"
+# solver mode: CPU or GPU
+solver_mode: CPU
