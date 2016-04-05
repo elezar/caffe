@@ -432,7 +432,7 @@ message LossParameter {
     // Outputs that receive the ignore label will NOT be ignored in computing
     // the normalization factor.
     FULL = 0;
-    // Divide by the total number of output locations that do not take the 
+    // Divide by the total number of output locations that do not take the
     // ignore_label.  If ignore_label is not set, this behaves like FULL.
     VALID = 1;
     // Divide by the batch size.
@@ -672,7 +672,7 @@ message EltwiseParameter {
 // Message that stores parameters used by ELULayer
 message ELUParameter {
   // Described in:
-  // Clevert, D.-A., Unterthiner, T., & Hochreiter, S. (2015). Fast and Accurate 
+  // Clevert, D.-A., Unterthiner, T., & Hochreiter, S. (2015). Fast and Accurate
   // Deep Network Learning by Exponential Linear Units (ELUs). arXiv
   optional float alpha = 1 [default = 1];
 }
@@ -794,7 +794,7 @@ message RBMInnerProductParameter {
   // pass without any fancy updating going on
   optional bool forward_is_update = 1 [default = true];
   // The type of layer the data is passed through before squashing if forward
-  optional LayerParameter connection_layer_param = 2;
+  required LayerParameter connection_layer_param = 2;
   // Layer that 'squashes' the data before sampling in top of forward pass.
   // If not specified, no squashing takes place
   optional LayerParameter hidden_activation_layer_param = 3;

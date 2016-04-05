@@ -8,7 +8,7 @@
 #include "caffe/util/device_alternate.hpp"
 
 namespace caffe {
-  
+
 /** @brief The following class provides a wrapper for a Blob which swaps the
  * data_ and diff_ arrays.
  **/
@@ -64,6 +64,7 @@ void RBMInnerProductLayer<Dtype>::LayerSetUp(const vector<Blob<Dtype>*>& bottom,
   sample_v1_vec_.clear();
   sample_v1_vec_.push_back(bottom[0]);
   if (!skip_init) {
+    LOG(INFO) << "Create connection layer";
     // set up the connection layer
     CHECK(param.has_connection_layer_param())
       << "a connection layer must be specified for the RBMInnerProductLayer";
@@ -90,6 +91,8 @@ void RBMInnerProductLayer<Dtype>::LayerSetUp(const vector<Blob<Dtype>*>& bottom,
     hidden_activation_layer_->SetUp(pre_activation_h1_vec_,
                                     post_activation_h1_vec_);
   } else {
+    LOG(INFO) << "No hidden activation specified. Passing through.";
+    // TODO: The vector should be resized before the data is shared.
     pre_activation_h1_vec_[0]->ShareData(*post_activation_h1_vec_[0]);
   }
 
@@ -102,7 +105,9 @@ void RBMInnerProductLayer<Dtype>::LayerSetUp(const vector<Blob<Dtype>*>& bottom,
     sample_h1_vec_.push_back(sample_h1_blob_.get());
   }
 
+
   // set up the hidden_sampling_layer_
+  LOG(INFO) << "Create hidden sampling layer";
   if (param.has_hidden_sampling_layer_param()) {
     if (!skip_init) {
       hidden_sampling_layer_ =
@@ -111,6 +116,8 @@ void RBMInnerProductLayer<Dtype>::LayerSetUp(const vector<Blob<Dtype>*>& bottom,
     hidden_sampling_layer_->SetUp(post_activation_h1_vec_,
                                   sample_h1_vec_);
   } else {
+    LOG(INFO) << "No hidden sampling specified. Passing through.";
+    // TODO: The vector should be resized before the data is shared.
     post_activation_h1_vec_[0]->ShareData(*sample_h1_vec_[0]);
   }
 
@@ -153,7 +160,7 @@ void RBMInnerProductLayer<Dtype>::LayerSetUp(const vector<Blob<Dtype>*>& bottom,
     CHECK_EQ(starting_bottom_shape[i], bottom[0]->shape()[i])
         << "something is wrong, bottom should not change size";
   }
-  
+
   bottom_copy_.reset(new Blob<Dtype>(bottom[0]->shape()));
 
   // Set up the visible bias.
@@ -214,13 +221,13 @@ void RBMInnerProductLayer<Dtype>::Reshape(const vector<Blob<Dtype>*>& bottom,
 
   // better safe than sorry
   sample_v1_vec_[0] = bottom[0];
-  
+
   if (top.size() >= num_error_ + 1) {
     pre_activation_h1_vec_[0] = top[0];
   } else {
     pre_activation_h1_vec_[0] = pre_activation_h1_blob_.get();
   }
-  
+
   if (top.size() >= num_error_ + 2) {
     post_activation_h1_vec_[0] = top[1];
   } else {
@@ -232,7 +239,7 @@ void RBMInnerProductLayer<Dtype>::Reshape(const vector<Blob<Dtype>*>& bottom,
   } else {
     sample_h1_vec_[0] = sample_h1_blob_.get();
   }
-  
+
   // Reshape each of the layers for the forward pass.
   connection_layer_->Reshape(sample_v1_vec_, pre_activation_h1_vec_);
   if (param.has_hidden_activation_layer_param()) {
@@ -282,7 +289,7 @@ void RBMInnerProductLayer<Dtype>::Forward_cpu(
     const vector<Blob<Dtype>*>& bottom, const vector<Blob<Dtype>*>& top) {
   const RBMInnerProductParameter& param =
       this->layer_param_.rbm_inner_product_param();
-    
+
   if (param.forward_is_update()) {
     bottom_copy_->CopyFrom(*bottom[0]);
     vector<Blob<Dtype>*> bottom_samples_vector(1);
@@ -292,10 +299,10 @@ void RBMInnerProductLayer<Dtype>::Forward_cpu(
     full_top.push_back(this->pre_activation_h1_vec_[0]);
     full_top.push_back(this->post_activation_h1_vec_[0]);
     full_top.push_back(this->sample_h1_vec_[0]);
-    
+
     // sample forward
     sample_h_given_v(bottom_samples_vector, full_top);
-    
+
     // do some sampling and then an update
     gibbs_hvh(bottom_samples_vector, full_top);
   } else {
@@ -401,10 +408,10 @@ void RBMInnerProductLayer<Dtype>::update_diffs(const int k,
 template <typename Dtype>
 void RBMInnerProductLayer<Dtype>::gibbs_hvh(
     const vector<Blob<Dtype>*>& bottom, const vector<Blob<Dtype>*>& top) {
-  
+
   // Update the diffs for k = 0, P(h|v_0)
   update_diffs(0, top, bottom);
-  
+
   // Disable the update of the diffs for the weights.
   for (int i = 0; i < connection_layer_->blobs().size(); ++i) {
     connection_layer_->set_param_propagate_down(i, false);
@@ -441,7 +448,7 @@ void RBMInnerProductLayer<Dtype>::sample_v_given_h(
   vector<bool> propagate_down(1, true);
   connection_layer_->Backward(h1, propagate_down, pre_activation_v1_vec_);
   // Add the visible bias to the pre activation.
-  
+
   if (visible_bias_term_) {
     switch (Caffe::mode()) {
     case Caffe::CPU:
@@ -476,7 +483,7 @@ void RBMInnerProductLayer<Dtype>::sample_v_given_h(
   if (param.has_visible_activation_layer_param()) {
     visible_activation_layer_->Forward(pre_activation_v1, post_activation_v1_vec_);
   }
-  
+
   // Sample the mean field and store this in the bottom.
   if (param.has_visible_sampling_layer_param()) {
     visible_sampling_layer_->Forward(post_activation_v1_vec_, bottom);

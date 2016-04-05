@@ -51,8 +51,14 @@ layer {
     connection_layer_param {
       type: "InnerProduct"
       inner_product_param {
-      num_output: 10
+        num_output: 10
       }
+    }
+    hidden_activation_layer_param {
+      type: "Sigmoid"
+    }
+    hidden_sampling_layer_param {
+      type: "BernoulliSample"
     }
   }
 }
