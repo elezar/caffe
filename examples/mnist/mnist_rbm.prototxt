@@ -47,11 +47,29 @@ layer {
   type: "RBMInnerProduct"
   bottom: "flat_data"
   top: "fc_rbm_1"
+  top: "reconstruction"
   rbm_inner_product_param {
+    sample_steps_in_update: 1
+    visible_bias_term: true
+    visible_bias_filler: {
+      type: "constant"
+      value: 0.0
+    }
+    loss_measure: RECONSTRUCTION
     connection_layer_param {
       type: "InnerProduct"
       inner_product_param {
-        num_output: 784
+        num_output: 100
+        weight_filler {
+          type: "uniform"
+          min: -0.0357142
+          max:  0.0357142
+        }
+        bias_term: true
+        bias_filler {
+          type: "constant"
+          value: 0.0
+        }
       }
     }
     hidden_activation_layer_param {
@@ -60,5 +78,27 @@ layer {
     hidden_sampling_layer_param {
       type: "BernoulliSample"
     }
+    visible_activation_layer_param {
+      type: "Sigmoid"
+    }
+    visible_sampling_layer_param {
+      type: "BernoulliSample"
+    }
   }
+}
+layer {
+  name: "reconstruction error"
+  type: "EuclideanLoss"
+  bottom: "flat_data"
+  bottom: "reconstruction"
+}
+layer {
+  name: "silent_loss"
+  type: "Silence"
+  bottom: "fc_rbm_1"
+}
+layer {
+  name: "silent_label"
+  type: "Silence"
+  bottom: "label"
 }
